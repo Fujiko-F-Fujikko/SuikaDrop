@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suika Drop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="topbar">
+      <p class="eyebrow">Suika inspired</p>
+      <h1>Suika Drop</h1>
+      <p class="lede">フルーツを落として合体させよう。同じフルーツがぶつかると大きくなります。上まで積み上がる前にスコアを伸ばしてください。</p>
+    </header>
+
+    <section class="content">
+      <section class="canvas-wrapper">
+        <canvas id="game" width="420" height="560"></canvas>
+        <div class="hint">
+          マウスで位置決め、クリックまたはスペースで落下。ピンクの破線より上に積み上がるとゲームオーバー。
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="controls">
+          <div class="stat">
+            <p>スコア</p>
+            <div id="score" class="stat-value">0</div>
+          </div>
+          <div class="stat">
+            <p>現在</p>
+            <canvas id="current-preview" class="fruit-preview" width="64" height="64" aria-label="現在のフルーツ"></canvas>
+          </div>
+          <div class="stat">
+            <p>次</p>
+            <canvas id="next-preview" class="fruit-preview" width="64" height="64" aria-label="次のフルーツ"></canvas>
+          </div>
+          <button id="restart">リスタート</button>
+        </div>
+
+        <div class="panel">
+          <h2>操作</h2>
+          <ul>
+            <li>マウス移動 / タッチ移動: 位置調整</li>
+            <li>クリック / Space: 落下</li>
+            <li>R / リスタート: やり直し</li>
+          </ul>
+        </div>
+
+        <div class="panel">
+          <h2>ルール</h2>
+          <ul>
+            <li>同じフルーツ同士がぶつかると合体</li>
+            <li>ピンクの破線を越えて積むとゲームオーバー</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script src="vendor/matter.min.js"></script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
