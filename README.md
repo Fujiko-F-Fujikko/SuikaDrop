@@ -6,7 +6,7 @@
 
 GitHub Pages を有効化すると、以下で公開できます。
 
-- `https://fujiko-f-fujikko.github.io/SuikaDrop/`
+- [https://fujiko-f-fujikko.github.io/SuikaDrop/](https://fujiko-f-fujikko.github.io/SuikaDrop/)
 
 ## 実行方法（ローカル）
 
