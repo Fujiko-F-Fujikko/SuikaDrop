@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events } = Matter;
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -72,6 +72,8 @@ let accumulatorMs = 0;
 let lastTime = 0;
 let lastPreviewHeld = null;
 let lastPreviewNext = null;
+let suppressClickUntil = 0;
+let touchActive = false;
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
@@ -79,6 +81,13 @@ function randomBaseFruit() {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function setSpawnXFromClientPoint(clientX) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (clientX - rect.left) * (WIDTH / rect.width);
+  spawnX = clamp(x, bounds.left + 16, bounds.right - 16);
+  if (heldFruit) heldFruit.x = spawnX;
 }
 
 function setupWorld() {
@@ -192,10 +201,7 @@ function resetGame() {
 }
 
 function handleInputPosition(evt) {
-  const rect = canvas.getBoundingClientRect();
-  const x = (evt.clientX - rect.left) * (WIDTH / rect.width);
-  spawnX = clamp(x, bounds.left + 16, bounds.right - 16);
-  if (heldFruit) heldFruit.x = spawnX;
+  setSpawnXFromClientPoint(evt.clientX);
 }
 
 function canDropHere(candidate) {
@@ -642,11 +648,37 @@ function drawPatternByType(context, type, radius, ghost) {
 }
 
 canvas.addEventListener('mousemove', handleInputPosition);
+
+// Touch UX: drag (swipe) to aim, and drop on finger release.
+canvas.addEventListener('touchstart', evt => {
+  if (!evt.touches.length) return;
+  touchActive = true;
+  setSpawnXFromClientPoint(evt.touches[0].clientX);
+  evt.preventDefault();
+}, { passive: false });
+
 canvas.addEventListener('touchmove', evt => {
-  if (evt.touches.length) handleInputPosition(evt.touches[0]);
+  if (!touchActive || !evt.touches.length) return;
+  setSpawnXFromClientPoint(evt.touches[0].clientX);
+  evt.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', evt => {
+  if (!touchActive) return;
+  touchActive = false;
+  suppressClickUntil = performance.now() + 500;
+  evt.preventDefault();
+  dropFruit();
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', () => {
+  touchActive = false;
 }, { passive: true });
 
-canvas.addEventListener('click', dropFruit);
+canvas.addEventListener('click', () => {
+  if (performance.now() < suppressClickUntil) return;
+  dropFruit();
+});
 document.addEventListener('keydown', evt => {
   if (evt.code === 'Space') {
     evt.preventDefault();
