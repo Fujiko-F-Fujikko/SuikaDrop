@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events } = Matter;
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -15,6 +15,8 @@ const currentPreviewCanvas = document.getElementById('current-preview');
 const nextPreviewCanvas = document.getElementById('next-preview');
 const restartBtn = document.getElementById('restart');
 const versionEl = document.getElementById('version');
+const tiltEnableBtn = document.getElementById('tilt-enable');
+const tiltStatusEl = document.getElementById('tilt-status');
 
 const previewCtxCurrent = currentPreviewCanvas.getContext('2d');
 const previewCtxNext = nextPreviewCanvas.getContext('2d');
@@ -74,6 +76,13 @@ let lastPreviewHeld = null;
 let lastPreviewNext = null;
 let suppressClickUntil = 0;
 let touchActive = false;
+let tiltEnabled = false;
+let tiltTargetX = 0;
+let tiltListenerAttached = false;
+
+const TILT_MAX_DEG = 35;
+const TILT_MAX_GX = 0.95;
+const TILT_SMOOTHING = 0.18;
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
@@ -99,6 +108,7 @@ function setupWorld() {
   engine.enableSleeping = true;
   engine.gravity.y = 1.25;
   engine.gravity.scale = 0.001;
+  engine.gravity.x = 0;
 
   walls = [];
   fruitById = new Map();
@@ -373,6 +383,7 @@ function updateGameOver(stepMs) {
 
 function stepSimulation(stepMs) {
   if (gameOver) return;
+  applyTiltGravity();
   Engine.update(engine, stepMs);
   // 1) collisionStart-derived contacts (handles very brief touches)
   // 2) distance-based scan (handles dense stacks / sleeping pairs)
@@ -647,6 +658,112 @@ function drawPatternByType(context, type, radius, ghost) {
   context.restore();
 }
 
+function clampSigned(value, maxAbs) {
+  return Math.max(-maxAbs, Math.min(maxAbs, value));
+}
+
+function getScreenOrientationAngle() {
+  const angle = window.screen?.orientation?.angle;
+  if (typeof angle === 'number') return angle;
+  const legacy = window.orientation;
+  if (typeof legacy === 'number') return legacy;
+  return 0;
+}
+
+function onDeviceOrientation(evt) {
+  if (!tiltEnabled) return;
+
+  const beta = typeof evt.beta === 'number' ? evt.beta : 0;   // front-back
+  const gamma = typeof evt.gamma === 'number' ? evt.gamma : 0; // left-right
+
+  const angle = getScreenOrientationAngle();
+  let screenX = gamma;
+  if (angle === 90) screenX = -beta;
+  else if (angle === -90 || angle === 270) screenX = beta;
+  else if (angle === 180) screenX = -gamma;
+
+  const normalized = clampSigned(screenX / TILT_MAX_DEG, 1);
+  tiltTargetX = normalized * TILT_MAX_GX;
+}
+
+function applyTiltGravity() {
+  if (!engine) return;
+  if (!tiltEnabled) {
+    engine.gravity.x = 0;
+    return;
+  }
+  const current = engine.gravity.x || 0;
+  engine.gravity.x = current + (tiltTargetX - current) * TILT_SMOOTHING;
+}
+
+function setTiltStatus(text) {
+  if (!tiltStatusEl) return;
+  tiltStatusEl.textContent = text;
+}
+
+function setupTiltUI() {
+  if (!tiltEnableBtn) return;
+
+  const supported = typeof window.DeviceOrientationEvent !== 'undefined';
+  if (!supported) {
+    tiltEnableBtn.style.display = 'none';
+    setTiltStatus('傾きセンサー未対応');
+    return;
+  }
+
+  function updateTiltButton() {
+    tiltEnableBtn.textContent = tiltEnabled ? '傾き操作を無効化' : '傾き操作を有効化';
+  }
+
+  function disableTilt() {
+    tiltEnabled = false;
+    tiltTargetX = 0;
+    if (engine) engine.gravity.x = 0;
+    if (tiltListenerAttached) {
+      window.removeEventListener('deviceorientation', onDeviceOrientation);
+      tiltListenerAttached = false;
+    }
+    setTiltStatus('無効');
+    updateTiltButton();
+  }
+
+  tiltEnableBtn.addEventListener('click', async () => {
+    if (tiltEnabled) {
+      disableTilt();
+      return;
+    }
+
+    try {
+      const DO = window.DeviceOrientationEvent;
+      if (typeof DO.requestPermission === 'function') {
+        setTiltStatus('許可をリクエスト中…');
+        const result = await DO.requestPermission();
+        if (result !== 'granted') {
+          setTiltStatus('許可されませんでした');
+          disableTilt();
+          return;
+        }
+      }
+
+      if (!tiltListenerAttached) {
+        window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+        tiltListenerAttached = true;
+      }
+
+      tiltEnabled = true;
+      setTiltStatus('有効');
+      updateTiltButton();
+    } catch (e) {
+      setTiltStatus('有効化に失敗');
+      console.error(e);
+      disableTilt();
+    }
+  });
+
+  setTiltStatus('無効');
+  updateTiltButton();
+}
+
 canvas.addEventListener('mousemove', handleInputPosition);
 
 // Touch UX: drag (swipe) to aim, and drop on finger release.
@@ -691,4 +808,5 @@ document.addEventListener('keydown', evt => {
 restartBtn.addEventListener('click', resetGame);
 
 resetGame();
+setupTiltUI();
 requestAnimationFrame(loop);

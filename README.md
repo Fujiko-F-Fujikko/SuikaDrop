@@ -4,7 +4,7 @@
 
 ## バージョン
 
-- v0.2.1
+- v0.2.2
 
 ## デモ（GitHub Pages）
 
@@ -41,6 +41,7 @@ npx http-server -p 8000
 - マウス移動 / タッチ移動: 落とす位置を調整
 - クリック / `Space`: フルーツを落とす
 - `R` / 「リスタート」: やり直し
+- スマホ（傾きセンサー対応端末）: 傾けるとフルーツが転がります（初回は許可が必要な場合があります）
 
 ## ルール
 
@@ -51,6 +52,7 @@ npx http-server -p 8000
 
 - 描画: Canvas 2D
 - 物理: Matter.js（`vendor/matter.min.js`）
+- 傾き操作: DeviceOrientation API
 
 ## ライセンス
 
