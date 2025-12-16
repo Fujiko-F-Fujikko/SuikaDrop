@@ -3,7 +3,7 @@ if (!Matter) {
   throw new Error('Matter.js failed to load. Check that vendor/matter.min.js is served correctly.');
 }
 
-const { Engine, World, Bodies, Body } = Matter;
+const { Engine, World, Bodies, Body, Events } = Matter;
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -48,7 +48,7 @@ const FIXED_STEP_MS = 1000 / 60;
 const MAX_ACCUMULATED_MS = 250;
 const GAMEOVER_TIME = 220; // ms above line while sleeping
 const MERGE_DISTANCE_EPS = 0.6;
-const MERGE_REL_SPEED_MAX = 3.5;
+const CONTACT_MERGE_TTL_MS = 180;
 
 const basePool = [0, 0, 1, 1, 2, 2, 3, 4];
 
@@ -56,6 +56,7 @@ let engine = null;
 let walls = [];
 let fruitById = new Map();
 let pendingMerges = [];
+let recentContacts = new Map();
 
 let heldFruit = null;
 let heldType = 0;
@@ -90,6 +91,7 @@ function setupWorld() {
   walls = [];
   fruitById = new Map();
   pendingMerges = [];
+  recentContacts = new Map();
 
   const thickness = 28;
   const wallHeight = (bounds.floor - bounds.topLine) + thickness;
@@ -119,6 +121,25 @@ function setupWorld() {
 
   walls.push(leftWall, rightWall, floor);
   World.add(engine.world, walls);
+
+  // Catch very brief “tap” contacts (e.g., rolling along a slope) so they still merge.
+  Events.off(engine, 'collisionStart');
+  Events.on(engine, 'collisionStart', event => {
+    for (const pair of event.pairs) {
+      const a = pair.bodyA;
+      const b = pair.bodyB;
+      const ia = a?.plugin?.suika;
+      const ib = b?.plugin?.suika;
+      if (!ia || !ib) continue;
+      if (ia.type !== ib.type) continue;
+      if (ia.type >= FRUITS.length - 1) continue;
+      if (ia.merging || ib.merging) continue;
+
+      const lo = Math.min(a.id, b.id);
+      const hi = Math.max(a.id, b.id);
+      recentContacts.set(`${lo}:${hi}`, CONTACT_MERGE_TTL_MS);
+    }
+  });
 }
 
 function createFruitBody(type, x, y) {
@@ -261,11 +282,6 @@ function findMerges() {
       const target = ia.r + ib.r + MERGE_DISTANCE_EPS;
       if ((dx * dx + dy * dy) > target * target) continue;
 
-      const rvx = b.velocity.x - a.velocity.x;
-      const rvy = b.velocity.y - a.velocity.y;
-      const relSpeed = Math.hypot(rvx, rvy);
-      if (relSpeed > MERGE_REL_SPEED_MAX) continue;
-
       ia.merging = true;
       ib.merging = true;
       used.add(a.id);
@@ -276,6 +292,47 @@ function findMerges() {
   }
 
   if (merges.length) pendingMerges.push(...merges);
+}
+
+function mergeFromRecentContacts(stepMs) {
+  if (!recentContacts.size) return;
+
+  for (const [key, ttl] of recentContacts.entries()) {
+    const nextTtl = ttl - stepMs;
+    if (nextTtl <= 0) {
+      recentContacts.delete(key);
+      continue;
+    }
+    recentContacts.set(key, nextTtl);
+
+    const [aIdStr, bIdStr] = key.split(':');
+    const a = fruitById.get(Number(aIdStr));
+    const b = fruitById.get(Number(bIdStr));
+    if (!a || !b) {
+      recentContacts.delete(key);
+      continue;
+    }
+
+    const ia = a.plugin?.suika;
+    const ib = b.plugin?.suika;
+    if (!ia || !ib) {
+      recentContacts.delete(key);
+      continue;
+    }
+    if (ia.type !== ib.type || ia.type >= FRUITS.length - 1) {
+      recentContacts.delete(key);
+      continue;
+    }
+    if (ia.merging || ib.merging) {
+      recentContacts.delete(key);
+      continue;
+    }
+
+    ia.merging = true;
+    ib.merging = true;
+    pendingMerges.push([a.id, b.id, ia.type]);
+    recentContacts.delete(key);
+  }
 }
 
 function updateGameOver(stepMs) {
@@ -308,7 +365,9 @@ function updateGameOver(stepMs) {
 function stepSimulation(stepMs) {
   if (gameOver) return;
   Engine.update(engine, stepMs);
-  // Use a deterministic "contact" scan so merges still happen when stacks settle.
+  // 1) collisionStart-derived contacts (handles very brief touches)
+  // 2) distance-based scan (handles dense stacks / sleeping pairs)
+  mergeFromRecentContacts(stepMs);
   findMerges();
   processMerges();
   updateGameOver(stepMs);
