@@ -5,6 +5,8 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events } = Matter;
 
+const VERSION = '0.2.0';
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -12,6 +14,7 @@ const scoreEl = document.getElementById('score');
 const currentPreviewCanvas = document.getElementById('current-preview');
 const nextPreviewCanvas = document.getElementById('next-preview');
 const restartBtn = document.getElementById('restart');
+const versionEl = document.getElementById('version');
 
 const previewCtxCurrent = currentPreviewCanvas.getContext('2d');
 const previewCtxNext = nextPreviewCanvas.getContext('2d');
@@ -450,6 +453,10 @@ function drawPreview(previewCtx, type) {
 
 function updateUI() {
   scoreEl.textContent = score.toLocaleString('ja-JP');
+
+  if (versionEl && !versionEl.textContent) {
+    versionEl.textContent = `v${VERSION}`;
+  }
 
   if (lastPreviewHeld !== heldType) {
     currentPreviewCanvas.title = FRUITS[heldType]?.name ?? '';

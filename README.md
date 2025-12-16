@@ -2,6 +2,10 @@
 
 スイカゲーム風の「落として合体」パズルです。ブラウザで動作します。
 
+## バージョン
+
+- v0.2.0
+
 ## デモ（GitHub Pages）
 
 GitHub Pages を有効化すると、以下で公開できます。
@@ -52,4 +56,3 @@ npx http-server -p 8000
 
 - 本プロジェクト: MIT License（`LICENSE`）
 - 同梱ライブラリ: Matter.js（MIT License、`THIRD_PARTY_NOTICES.md`）
-

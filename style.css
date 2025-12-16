@@ -37,6 +37,23 @@ h1 {
   font-size: 28px;
 }
 
+.title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.version-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid #e2e8f0;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
 .lede {
   max-width: 720px;
   margin: 0;
