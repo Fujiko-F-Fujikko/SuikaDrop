@@ -10,4 +10,4 @@ ALLOWED_ORIGIN = "https://fujiko-f-fujikko.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "suikadrop"
-database_id = "REPLACE_ME"
+database_id = "bf7b01f8-b230-4d5b-b163-a4dd3ee305dd"
