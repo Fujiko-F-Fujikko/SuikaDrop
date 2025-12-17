@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events, Sleeping } = Matter;
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -85,12 +85,10 @@ const BASE_GRAVITY_Y = 1.25;
 const TILT_MAX_DEG = 35;
 const TILT_DEADZONE_DEG = 3.5;
 const TILT_MAX_GX = 0.95;
-const TILT_MAX_GY_DELTA = 0.45;
 const TILT_SMOOTHING = 0.18;
 const TILT_LOCK_MS_AFTER_DROP = 450;
 const TILT_WAKE_THRESHOLD = 0.03;
 
-let tiltTargetY = BASE_GRAVITY_Y;
 let tiltLockUntil = 0;
 let tiltHasCalibration = false;
 let tiltNeutralScreenX = 0;
@@ -172,7 +170,6 @@ function setupWorld() {
       const ib = b?.plugin?.suika;
       if (!ia || !ib) continue;
       if (ia.type !== ib.type) continue;
-      if (ia.type >= FRUITS.length - 1) continue;
       if (ia.merging || ib.merging) continue;
 
       const lo = Math.min(a.id, b.id);
@@ -219,7 +216,6 @@ function resetGame() {
   setupWorld();
 
   tiltTargetX = 0;
-  tiltTargetY = BASE_GRAVITY_Y;
   tiltLockUntil = performance.now() + 250;
 
   heldType = randomBaseFruit();
@@ -280,6 +276,15 @@ function processMerges() {
 
     const next = type + 1;
     if (!FRUITS[next]) {
+      // Final merge: when two watermelons meet, award points and remove them.
+      const lastType = FRUITS.length - 1;
+      if (type === lastType) {
+        removeFruitBody(a);
+        removeFruitBody(b);
+        score += FRUITS[type].score;
+        continue;
+      }
+
       a.plugin.suika.merging = false;
       b.plugin.suika.merging = false;
       continue;
@@ -312,7 +317,6 @@ function findMerges() {
     if (!ia) continue;
     if (ia.merging) continue;
     if (used.has(a.id)) continue;
-    if (ia.type >= FRUITS.length - 1) continue;
 
     for (let j = i + 1; j < bodies.length; j++) {
       const b = bodies[j];
@@ -364,7 +368,7 @@ function mergeFromRecentContacts(stepMs) {
       recentContacts.delete(key);
       continue;
     }
-    if (ia.type !== ib.type || ia.type >= FRUITS.length - 1) {
+    if (ia.type !== ib.type) {
       recentContacts.delete(key);
       continue;
     }
@@ -733,14 +737,10 @@ function onDeviceOrientation(evt) {
   }
 
   const dx = applyDeadzone(screenX - tiltNeutralScreenX, TILT_DEADZONE_DEG);
-  const dy = applyDeadzone(screenY - tiltNeutralScreenY, TILT_DEADZONE_DEG);
 
   const nx = clampSigned(dx / TILT_MAX_DEG, 1);
-  const ny = clampSigned(dy / TILT_MAX_DEG, 1);
 
   tiltTargetX = nx * TILT_MAX_GX;
-  const desiredY = BASE_GRAVITY_Y + ny * TILT_MAX_GY_DELTA;
-  tiltTargetY = clamp(desiredY, BASE_GRAVITY_Y * 0.8, BASE_GRAVITY_Y * 1.25);
 }
 
 function applyTiltGravity() {
@@ -754,23 +754,20 @@ function applyTiltGravity() {
   const now = performance.now();
   const locked = now < tiltLockUntil;
   const targetX = locked ? 0 : (tiltHasCalibration ? tiltTargetX : 0);
-  const targetY = locked ? BASE_GRAVITY_Y : (tiltHasCalibration ? tiltTargetY : BASE_GRAVITY_Y);
 
   const currentX = engine.gravity.x || 0;
-  const currentY = engine.gravity.y || BASE_GRAVITY_Y;
   const nextX = currentX + (targetX - currentX) * TILT_SMOOTHING;
-  const nextY = currentY + (targetY - currentY) * TILT_SMOOTHING;
 
   engine.gravity.x = nextX;
-  engine.gravity.y = nextY;
+  engine.gravity.y = BASE_GRAVITY_Y;
 
-  const delta = Math.abs(nextX - lastAppliedGX) + Math.abs(nextY - lastAppliedGY);
+  const delta = Math.abs(nextX - lastAppliedGX);
   if (delta > TILT_WAKE_THRESHOLD) {
     for (const body of fruitById.values()) {
       if (body.isSleeping) Sleeping.set(body, false);
     }
     lastAppliedGX = nextX;
-    lastAppliedGY = nextY;
+    lastAppliedGY = BASE_GRAVITY_Y;
   }
 }
 
@@ -799,7 +796,6 @@ function setupTiltUI() {
   function disableTilt() {
     tiltEnabled = false;
     tiltTargetX = 0;
-    tiltTargetY = BASE_GRAVITY_Y;
     tiltLockUntil = performance.now() + 200;
     tiltHasCalibration = false;
     if (engine) {
