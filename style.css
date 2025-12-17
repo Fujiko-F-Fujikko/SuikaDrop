@@ -199,6 +199,49 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 
+.online-row {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+}
+
+.field span {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.field input {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}
+
+.online-meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+}
+
 .tilt-row {
   margin-top: 10px;
   display: flex;

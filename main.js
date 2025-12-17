@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events, Sleeping } = Matter;
 
-const VERSION = '0.2.5';
+const VERSION = '0.3.0';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -18,7 +18,12 @@ const versionEl = document.getElementById('version');
 const tiltEnableBtn = document.getElementById('tilt-enable');
 const tiltCalibrateBtn = document.getElementById('tilt-calibrate');
 const tiltStatusEl = document.getElementById('tilt-status');
-const rankingEl = document.getElementById('ranking');
+const onlineRankingEl = document.getElementById('ranking-online');
+const localRankingEl = document.getElementById('ranking-local');
+const nicknameEl = document.getElementById('nickname');
+const rankingRefreshBtn = document.getElementById('ranking-refresh');
+const onlineStatusEl = document.getElementById('online-status');
+const myRankEl = document.getElementById('my-rank');
 
 const previewCtxCurrent = currentPreviewCanvas.getContext('2d');
 const previewCtxNext = nextPreviewCanvas.getContext('2d');
@@ -103,6 +108,12 @@ let lastAppliedGY = BASE_GRAVITY_Y;
 const SCORE_HISTORY_KEY = 'suika-drop:scores';
 const SCORE_HISTORY_LIMIT = 10;
 let scoreHistory = [];
+const DEVICE_ID_KEY = 'suika-drop:deviceId';
+const NICKNAME_KEY = 'suika-drop:nickname';
+const API_BASE_KEY = 'suika-drop:apiBase';
+
+// Set your Cloudflare Worker URL here, or set it in localStorage as `suika-drop:apiBase`.
+const DEFAULT_API_BASE = '';
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
@@ -217,7 +228,7 @@ function recordScoreOnce() {
   scoreHistory.unshift({ score, at: new Date().toISOString() });
   scoreHistory = scoreHistory.slice(0, SCORE_HISTORY_LIMIT);
   saveScoreHistory(scoreHistory);
-  renderRanking();
+  renderLocalRanking();
 }
 
 function formatRankMeta(isoString) {
@@ -231,15 +242,127 @@ function formatRankMeta(isoString) {
   }
 }
 
-function renderRanking() {
-  if (!rankingEl) return;
+function setOnlineStatus(text) {
+  if (!onlineStatusEl) return;
+  onlineStatusEl.textContent = text;
+}
+
+function setMyRankText(text) {
+  if (!myRankEl) return;
+  myRankEl.textContent = text;
+}
+
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (id && /^[a-zA-Z0-9-]{8,64}$/.test(id)) return id;
+  id = (crypto?.randomUUID ? crypto.randomUUID() : `dev-${Math.random().toString(16).slice(2)}-${Date.now()}`);
+  localStorage.setItem(DEVICE_ID_KEY, id);
+  return id;
+}
+
+function getNickname() {
+  const stored = localStorage.getItem(NICKNAME_KEY);
+  if (stored && stored.trim()) return stored.trim().slice(0, 16);
+  const suffix = Math.random().toString(16).slice(2, 6).toUpperCase();
+  const name = `Player-${suffix}`;
+  localStorage.setItem(NICKNAME_KEY, name);
+  return name;
+}
+
+function setNickname(name) {
+  const trimmed = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, 16);
+  localStorage.setItem(NICKNAME_KEY, trimmed || 'Player');
+}
+
+function getApiBase() {
+  return (localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE || '').replace(/\/+$/, '');
+}
+
+async function fetchJson(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function submitScoreOnline() {
+  const apiBase = getApiBase();
+  if (!apiBase) return;
+  const deviceId = getOrCreateDeviceId();
+  const nickname = getNickname();
+  await fetchJson(`${apiBase}/api/score`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId, nickname, score, clientVersion: VERSION })
+  });
+}
+
+function renderOnlineRanking(items) {
+  if (!onlineRankingEl) return;
+  onlineRankingEl.innerHTML = '';
+  if (!items?.length) {
+    const li = document.createElement('li');
+    li.textContent = 'まだ投稿がありません';
+    onlineRankingEl.appendChild(li);
+    return;
+  }
+  for (const item of items) {
+    const li = document.createElement('li');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'rank-score';
+    nameSpan.textContent = `${item.rank}. ${item.nickname}`;
+
+    const scoreSpan = document.createElement('span');
+    scoreSpan.className = 'rank-meta';
+    scoreSpan.textContent = Number(item.score).toLocaleString('ja-JP');
+
+    li.appendChild(nameSpan);
+    li.appendChild(scoreSpan);
+    onlineRankingEl.appendChild(li);
+  }
+}
+
+async function refreshOnlineRanking() {
+  const apiBase = getApiBase();
+  if (!apiBase) {
+    setOnlineStatus('オンライン未設定（API URLが必要）');
+    return;
+  }
+
+  setOnlineStatus('更新中…');
+  setMyRankText('');
+  try {
+    const ranking = await fetchJson(`${apiBase}/api/ranking?limit=50`, { method: 'GET' });
+    renderOnlineRanking(ranking.items || []);
+    setOnlineStatus(`今日: ${ranking.day}`);
+
+    const deviceId = getOrCreateDeviceId();
+    const me = await fetchJson(`${apiBase}/api/me?day=${encodeURIComponent(ranking.day)}&deviceId=${encodeURIComponent(deviceId)}`, { method: 'GET' });
+    if (me?.me?.rank) {
+      setMyRankText(`あなた: ${me.me.rank}位（${Number(me.me.score).toLocaleString('ja-JP')}）`);
+    } else {
+      setMyRankText('あなた: 未投稿');
+    }
+  } catch (e) {
+    setOnlineStatus(`更新失敗: ${String(e.message || e)}`);
+  }
+}
+
+function renderLocalRanking() {
+  if (!localRankingEl) return;
   const ranked = scoreHistory.slice(0, SCORE_HISTORY_LIMIT).slice().sort((a, b) => b.score - a.score);
-  rankingEl.innerHTML = '';
+  localRankingEl.innerHTML = '';
 
   if (!ranked.length) {
     const li = document.createElement('li');
     li.textContent = 'まだ記録がありません';
-    rankingEl.appendChild(li);
+    localRankingEl.appendChild(li);
     return;
   }
 
@@ -255,7 +378,7 @@ function renderRanking() {
 
     li.appendChild(scoreSpan);
     li.appendChild(metaSpan);
-    rankingEl.appendChild(li);
+    localRankingEl.appendChild(li);
   }
 }
 
@@ -502,7 +625,12 @@ function stepSimulation(stepMs) {
   findMerges();
   processMerges();
   updateGameOver(stepMs);
-  if (gameOver) recordScoreOnce();
+  if (gameOver) {
+    recordScoreOnce();
+    submitScoreOnline()
+      .catch(e => setOnlineStatus(`投稿失敗: ${String(e.message || e)}`))
+      .finally(() => refreshOnlineRanking());
+  }
 }
 
 function draw() {
@@ -990,5 +1118,19 @@ restartBtn.addEventListener('click', resetGame);
 resetGame();
 setupTiltUI();
 scoreHistory = loadScoreHistory();
-renderRanking();
+renderLocalRanking();
+
+if (nicknameEl) {
+  nicknameEl.value = getNickname();
+  nicknameEl.addEventListener('change', () => {
+    setNickname(nicknameEl.value);
+    nicknameEl.value = getNickname();
+  });
+}
+
+if (rankingRefreshBtn) {
+  rankingRefreshBtn.addEventListener('click', () => refreshOnlineRanking());
+}
+
+refreshOnlineRanking();
 requestAnimationFrame(loop);

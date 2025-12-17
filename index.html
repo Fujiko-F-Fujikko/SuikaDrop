@@ -69,8 +69,24 @@
         </div>
 
         <div class="panel">
-          <h2>ランキング（直近10回）</h2>
-          <ol id="ranking" class="ranking" aria-label="スコアランキング"></ol>
+          <h2>オンライン（日次）</h2>
+          <div class="online-row">
+            <label class="field">
+              <span>ニックネーム</span>
+              <input id="nickname" maxlength="16" placeholder="Player" />
+            </label>
+            <button id="ranking-refresh" class="secondary" type="button">更新</button>
+          </div>
+          <div class="online-meta">
+            <span id="online-status"></span>
+            <span id="my-rank"></span>
+          </div>
+          <ol id="ranking-online" class="ranking" aria-label="オンラインランキング"></ol>
+        </div>
+
+        <div class="panel">
+          <h2>ローカル（直近10回）</h2>
+          <ol id="ranking-local" class="ranking" aria-label="ローカルスコア"></ol>
         </div>
       </aside>
     </section>
