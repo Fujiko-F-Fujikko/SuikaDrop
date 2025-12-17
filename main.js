@@ -3,7 +3,7 @@ if (!Matter) {
   throw new Error('Matter.js failed to load. Check that vendor/matter.min.js is served correctly.');
 }
 
-const { Engine, World, Bodies, Body, Events } = Matter;
+const { Engine, World, Bodies, Body, Events, Sleeping } = Matter;
 
 const VERSION = '0.2.3';
 
@@ -767,7 +767,7 @@ function applyTiltGravity() {
   const delta = Math.abs(nextX - lastAppliedGX) + Math.abs(nextY - lastAppliedGY);
   if (delta > TILT_WAKE_THRESHOLD) {
     for (const body of fruitById.values()) {
-      if (body.isSleeping) Body.setSleeping(body, false);
+      if (body.isSleeping) Sleeping.set(body, false);
     }
     lastAppliedGX = nextX;
     lastAppliedGY = nextY;
