@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events, Sleeping } = Matter;
 
-const VERSION = '0.2.4';
+const VERSION = '0.2.5';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -18,6 +18,7 @@ const versionEl = document.getElementById('version');
 const tiltEnableBtn = document.getElementById('tilt-enable');
 const tiltCalibrateBtn = document.getElementById('tilt-calibrate');
 const tiltStatusEl = document.getElementById('tilt-status');
+const rankingEl = document.getElementById('ranking');
 
 const previewCtxCurrent = currentPreviewCanvas.getContext('2d');
 const previewCtxNext = nextPreviewCanvas.getContext('2d');
@@ -80,6 +81,7 @@ let touchActive = false;
 let tiltEnabled = false;
 let tiltTargetX = 0;
 let tiltListenerAttached = false;
+let scoreRecorded = false;
 
 const BASE_GRAVITY_Y = 1.25;
 const TILT_MAX_DEG = 35;
@@ -97,6 +99,10 @@ let tiltLastScreenX = 0;
 let tiltLastScreenY = 0;
 let lastAppliedGX = 0;
 let lastAppliedGY = BASE_GRAVITY_Y;
+
+const SCORE_HISTORY_KEY = 'suika-drop:scores';
+const SCORE_HISTORY_LIMIT = 10;
+let scoreHistory = [];
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
@@ -179,6 +185,80 @@ function setupWorld() {
   });
 }
 
+function loadScoreHistory() {
+  try {
+    const raw = localStorage.getItem(SCORE_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(x => ({
+        score: Number(x?.score) || 0,
+        at: typeof x?.at === 'string' ? x.at : null
+      }))
+      .filter(x => Number.isFinite(x.score));
+  } catch {
+    return [];
+  }
+}
+
+function saveScoreHistory(list) {
+  try {
+    localStorage.setItem(SCORE_HISTORY_KEY, JSON.stringify(list));
+  } catch {
+    // ignore (private mode etc.)
+  }
+}
+
+function recordScoreOnce() {
+  if (scoreRecorded) return;
+  scoreRecorded = true;
+
+  scoreHistory.unshift({ score, at: new Date().toISOString() });
+  scoreHistory = scoreHistory.slice(0, SCORE_HISTORY_LIMIT);
+  saveScoreHistory(scoreHistory);
+  renderRanking();
+}
+
+function formatRankMeta(isoString) {
+  if (!isoString) return '';
+  try {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
+function renderRanking() {
+  if (!rankingEl) return;
+  const ranked = scoreHistory.slice(0, SCORE_HISTORY_LIMIT).slice().sort((a, b) => b.score - a.score);
+  rankingEl.innerHTML = '';
+
+  if (!ranked.length) {
+    const li = document.createElement('li');
+    li.textContent = 'まだ記録がありません';
+    rankingEl.appendChild(li);
+    return;
+  }
+
+  for (const item of ranked) {
+    const li = document.createElement('li');
+    const scoreSpan = document.createElement('span');
+    scoreSpan.className = 'rank-score';
+    scoreSpan.textContent = item.score.toLocaleString('ja-JP');
+
+    const metaSpan = document.createElement('span');
+    metaSpan.className = 'rank-meta';
+    metaSpan.textContent = formatRankMeta(item.at);
+
+    li.appendChild(scoreSpan);
+    li.appendChild(metaSpan);
+    rankingEl.appendChild(li);
+  }
+}
+
 function createFruitBody(type, x, y) {
   const r = FRUITS[type].radius;
   const body = Bodies.circle(x, y, r, {
@@ -212,6 +292,7 @@ function resetGame() {
   score = 0;
   gameOver = false;
   accumulatorMs = 0;
+  scoreRecorded = false;
 
   setupWorld();
 
@@ -421,6 +502,7 @@ function stepSimulation(stepMs) {
   findMerges();
   processMerges();
   updateGameOver(stepMs);
+  if (gameOver) recordScoreOnce();
 }
 
 function draw() {
@@ -907,4 +989,6 @@ restartBtn.addEventListener('click', resetGame);
 
 resetGame();
 setupTiltUI();
+scoreHistory = loadScoreHistory();
+renderRanking();
 requestAnimationFrame(loop);

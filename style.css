@@ -175,6 +175,30 @@ h1 {
   font-size: 13px;
 }
 
+.ranking {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.ranking li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ranking .rank-score {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ranking .rank-meta {
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
 .tilt-row {
   margin-top: 10px;
   display: flex;
