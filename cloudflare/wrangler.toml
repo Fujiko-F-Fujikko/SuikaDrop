@@ -1,5 +1,5 @@
 name = "suikadrop-api"
-main = "cloudflare/worker.js"
+main = "worker.js"
 compatibility_date = "2025-12-17"
 
 [vars]
@@ -11,4 +11,3 @@ ALLOWED_ORIGIN = "https://fujiko-f-fujikko.github.io"
 binding = "DB"
 database_name = "suikadrop"
 database_id = "REPLACE_ME"
-
