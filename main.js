@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events, Sleeping } = Matter;
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -113,7 +113,7 @@ const NICKNAME_KEY = 'suika-drop:nickname';
 const API_BASE_KEY = 'suika-drop:apiBase';
 
 // Set your Cloudflare Worker URL here, or set it in localStorage as `suika-drop:apiBase`.
-const DEFAULT_API_BASE = '';
+const DEFAULT_API_BASE = 'https://suikadrop.haruka-fujisawa.workers.dev';
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
