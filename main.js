@@ -5,7 +5,7 @@ if (!Matter) {
 
 const { Engine, World, Bodies, Body, Events } = Matter;
 
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -16,6 +16,7 @@ const nextPreviewCanvas = document.getElementById('next-preview');
 const restartBtn = document.getElementById('restart');
 const versionEl = document.getElementById('version');
 const tiltEnableBtn = document.getElementById('tilt-enable');
+const tiltCalibrateBtn = document.getElementById('tilt-calibrate');
 const tiltStatusEl = document.getElementById('tilt-status');
 
 const previewCtxCurrent = currentPreviewCanvas.getContext('2d');
@@ -80,9 +81,24 @@ let tiltEnabled = false;
 let tiltTargetX = 0;
 let tiltListenerAttached = false;
 
+const BASE_GRAVITY_Y = 1.25;
 const TILT_MAX_DEG = 35;
+const TILT_DEADZONE_DEG = 3.5;
 const TILT_MAX_GX = 0.95;
+const TILT_MAX_GY_DELTA = 0.45;
 const TILT_SMOOTHING = 0.18;
+const TILT_LOCK_MS_AFTER_DROP = 450;
+const TILT_WAKE_THRESHOLD = 0.03;
+
+let tiltTargetY = BASE_GRAVITY_Y;
+let tiltLockUntil = 0;
+let tiltHasCalibration = false;
+let tiltNeutralScreenX = 0;
+let tiltNeutralScreenY = 0;
+let tiltLastScreenX = 0;
+let tiltLastScreenY = 0;
+let lastAppliedGX = 0;
+let lastAppliedGY = BASE_GRAVITY_Y;
 
 function randomBaseFruit() {
   return basePool[Math.floor(Math.random() * basePool.length)];
@@ -106,9 +122,11 @@ function setupWorld() {
     constraintIterations: 2
   });
   engine.enableSleeping = true;
-  engine.gravity.y = 1.25;
+  engine.gravity.y = BASE_GRAVITY_Y;
   engine.gravity.scale = 0.001;
   engine.gravity.x = 0;
+  lastAppliedGX = 0;
+  lastAppliedGY = BASE_GRAVITY_Y;
 
   walls = [];
   fruitById = new Map();
@@ -200,6 +218,10 @@ function resetGame() {
 
   setupWorld();
 
+  tiltTargetX = 0;
+  tiltTargetY = BASE_GRAVITY_Y;
+  tiltLockUntil = performance.now() + 250;
+
   heldType = randomBaseFruit();
   nextType = randomBaseFruit();
   spawnX = WIDTH / 2;
@@ -233,6 +255,10 @@ function dropFruit() {
 
   const body = createFruitBody(heldFruit.type, heldFruit.x, heldFruit.y);
   World.add(engine.world, body);
+
+  if (tiltEnabled) {
+    tiltLockUntil = performance.now() + TILT_LOCK_MS_AFTER_DROP;
+  }
 
   heldType = nextType;
   nextType = randomBaseFruit();
@@ -662,6 +688,12 @@ function clampSigned(value, maxAbs) {
   return Math.max(-maxAbs, Math.min(maxAbs, value));
 }
 
+function applyDeadzone(value, deadzone) {
+  const abs = Math.abs(value);
+  if (abs <= deadzone) return 0;
+  return Math.sign(value) * (abs - deadzone);
+}
+
 function getScreenOrientationAngle() {
   const angle = window.screen?.orientation?.angle;
   if (typeof angle === 'number') return angle;
@@ -673,27 +705,73 @@ function getScreenOrientationAngle() {
 function onDeviceOrientation(evt) {
   if (!tiltEnabled) return;
 
-  const beta = typeof evt.beta === 'number' ? evt.beta : 0;   // front-back
+  const beta = typeof evt.beta === 'number' ? evt.beta : 0; // front-back
   const gamma = typeof evt.gamma === 'number' ? evt.gamma : 0; // left-right
 
   const angle = getScreenOrientationAngle();
   let screenX = gamma;
-  if (angle === 90) screenX = -beta;
-  else if (angle === -90 || angle === 270) screenX = beta;
-  else if (angle === 180) screenX = -gamma;
+  let screenY = beta;
+  if (angle === 90) {
+    screenX = -beta;
+    screenY = gamma;
+  } else if (angle === -90 || angle === 270) {
+    screenX = beta;
+    screenY = -gamma;
+  } else if (angle === 180) {
+    screenX = -gamma;
+    screenY = -beta;
+  }
 
-  const normalized = clampSigned(screenX / TILT_MAX_DEG, 1);
-  tiltTargetX = normalized * TILT_MAX_GX;
+  tiltLastScreenX = screenX;
+  tiltLastScreenY = screenY;
+
+  if (!tiltHasCalibration) {
+    tiltNeutralScreenX = screenX;
+    tiltNeutralScreenY = screenY;
+    tiltHasCalibration = true;
+    setTiltStatus('有効（基準セット）');
+  }
+
+  const dx = applyDeadzone(screenX - tiltNeutralScreenX, TILT_DEADZONE_DEG);
+  const dy = applyDeadzone(screenY - tiltNeutralScreenY, TILT_DEADZONE_DEG);
+
+  const nx = clampSigned(dx / TILT_MAX_DEG, 1);
+  const ny = clampSigned(dy / TILT_MAX_DEG, 1);
+
+  tiltTargetX = nx * TILT_MAX_GX;
+  const desiredY = BASE_GRAVITY_Y + ny * TILT_MAX_GY_DELTA;
+  tiltTargetY = clamp(desiredY, BASE_GRAVITY_Y * 0.8, BASE_GRAVITY_Y * 1.25);
 }
 
 function applyTiltGravity() {
   if (!engine) return;
   if (!tiltEnabled) {
     engine.gravity.x = 0;
+    engine.gravity.y = BASE_GRAVITY_Y;
     return;
   }
-  const current = engine.gravity.x || 0;
-  engine.gravity.x = current + (tiltTargetX - current) * TILT_SMOOTHING;
+
+  const now = performance.now();
+  const locked = now < tiltLockUntil;
+  const targetX = locked ? 0 : (tiltHasCalibration ? tiltTargetX : 0);
+  const targetY = locked ? BASE_GRAVITY_Y : (tiltHasCalibration ? tiltTargetY : BASE_GRAVITY_Y);
+
+  const currentX = engine.gravity.x || 0;
+  const currentY = engine.gravity.y || BASE_GRAVITY_Y;
+  const nextX = currentX + (targetX - currentX) * TILT_SMOOTHING;
+  const nextY = currentY + (targetY - currentY) * TILT_SMOOTHING;
+
+  engine.gravity.x = nextX;
+  engine.gravity.y = nextY;
+
+  const delta = Math.abs(nextX - lastAppliedGX) + Math.abs(nextY - lastAppliedGY);
+  if (delta > TILT_WAKE_THRESHOLD) {
+    for (const body of fruitById.values()) {
+      if (body.isSleeping) Body.setSleeping(body, false);
+    }
+    lastAppliedGX = nextX;
+    lastAppliedGY = nextY;
+  }
 }
 
 function setTiltStatus(text) {
@@ -713,18 +791,40 @@ function setupTiltUI() {
 
   function updateTiltButton() {
     tiltEnableBtn.textContent = tiltEnabled ? '傾き操作を無効化' : '傾き操作を有効化';
+    if (tiltCalibrateBtn) {
+      tiltCalibrateBtn.disabled = !tiltEnabled;
+    }
   }
 
   function disableTilt() {
     tiltEnabled = false;
     tiltTargetX = 0;
-    if (engine) engine.gravity.x = 0;
+    tiltTargetY = BASE_GRAVITY_Y;
+    tiltLockUntil = performance.now() + 200;
+    tiltHasCalibration = false;
+    if (engine) {
+      engine.gravity.x = 0;
+      engine.gravity.y = BASE_GRAVITY_Y;
+    }
     if (tiltListenerAttached) {
       window.removeEventListener('deviceorientation', onDeviceOrientation);
       tiltListenerAttached = false;
     }
     setTiltStatus('無効');
     updateTiltButton();
+  }
+
+  if (tiltCalibrateBtn) {
+    tiltCalibrateBtn.addEventListener('click', () => {
+      if (!tiltEnabled || !tiltHasCalibration) {
+        setTiltStatus('有効化してから基準をセットしてください');
+        return;
+      }
+      tiltNeutralScreenX = tiltLastScreenX;
+      tiltNeutralScreenY = tiltLastScreenY;
+      tiltLockUntil = performance.now() + 200;
+      setTiltStatus('有効（基準リセット）');
+    });
   }
 
   tiltEnableBtn.addEventListener('click', async () => {
@@ -751,7 +851,9 @@ function setupTiltUI() {
       }
 
       tiltEnabled = true;
-      setTiltStatus('有効');
+      tiltHasCalibration = false;
+      tiltLockUntil = performance.now() + 250;
+      setTiltStatus('有効化中…（端末を持ちやすい角度で固定してください）');
       updateTiltButton();
     } catch (e) {
       setTiltStatus('有効化に失敗');
